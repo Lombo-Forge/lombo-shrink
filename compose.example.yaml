@@ -1,0 +1,19 @@
+# Server side only: a container the main PC calls over ssh, instead of installing Python on the server.
+# The PC then sets   LOMBO_SHRINK_REMOTE_COMMAND="docker exec -i lombo-shrink lombo-shrink"
+#
+# The staging and library folders are mounted at the SAME path inside the container as on the host, so
+# the paths the PC sends over ssh mean the same thing on both sides. Use the same values in .env here
+# (LOMBO_SHRINK_STAGE_DIR, LOMBO_SHRINK_LIBRARY_DIR or BRANCHES, LOMBO_SHRINK_DRY_RUN=false).
+#   docker compose -f compose.example.yaml up -d
+services:
+  lombo-shrink:
+    image: ghcr.io/lombo-forge/lombo-shrink:latest   # or build: .
+    container_name: lombo-shrink
+    restart: unless-stopped
+    entrypoint: ["sleep", "infinity"]                # waits; the PC runs `lombo-shrink swap` with docker exec
+    user: "1000:1000"                                # the owner of your media files
+    env_file: .env
+    mem_limit: 256m
+    volumes:
+      - /mnt/media:/mnt/media                        # the library (with mergerfs: each disk's library folder)
+      - /var/lib/lombo-shrink:/var/lib/lombo-shrink  # staging and the session file

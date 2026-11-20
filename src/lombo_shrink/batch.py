@@ -1,0 +1,197 @@
+"""The batch on the main PC: read the candidate list, convert each file into a mirror folder, log, report.
+
+It never writes to the library. Results go to OUT_DIR as `<name>.hevc.mkv`; the log is `convert-log.jsonl`.
+Resume: accepted, rejected, skipped and missing are final; failed is retried. Create a file named STOP in
+OUT_DIR to stop before the next file.
+"""
+
+import json
+import shutil
+import sys
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from . import core, media
+from .config import Config
+
+Ship = Callable[
+    [dict[str, Any], Path, float], tuple[str, str]
+]  # (item, converted file, source mtime) -> (status, reason)
+
+
+@dataclass
+class BatchResult:
+    stopped: str = "finished the list"
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    planned: list[str] = field(default_factory=list)
+    report: str = ""
+
+
+@contextmanager
+def keep_awake() -> Iterator[None]:
+    """Stop Windows sleeping while the batch runs. Does nothing elsewhere."""
+    windll = getattr(__import__("ctypes"), "windll", None) if sys.platform == "win32" else None
+    if windll is None:
+        yield
+        return
+    windll.kernel32.SetThreadExecutionState(0x80000001)  # pragma: no cover
+    try:  # pragma: no cover
+        yield
+    finally:  # pragma: no cover
+        windll.kernel32.SetThreadExecutionState(0x80000000)
+
+
+def output_path(out_dir: Path, rel: str) -> Path:
+    return out_dir / (str(Path(rel).with_suffix("")) + ".hevc.mkv")
+
+
+def _read_log(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                records.append(json.loads(line))
+            except ValueError:
+                continue  # a half-written last line after a crash
+    return records
+
+
+def run_batch(
+    cfg: Config,
+    items: list[dict[str, Any]],
+    encoder: str,
+    *,
+    dry_run: bool,
+    redo: bool = False,
+    ship: Ship | None = None,
+    log: Callable[[str], None] = print,
+    poll: float = 10,
+) -> BatchResult:
+    out_dir = Path(cfg.out_dir)
+    library = Path(cfg.library_dir)
+    result = BatchResult()
+    if not dry_run:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for stale in out_dir.rglob("*.partial.mkv"):
+            stale.unlink(missing_ok=True)
+    log_path = out_dir / "convert-log.jsonl"
+    done, accepted = core.resume_state(_read_log(log_path))
+    tried = 0
+
+    def record(it: dict[str, Any], status: str, msg: str, out: Path | None, extra: dict[str, Any]) -> int:
+        size = out.stat().st_size if out and out.exists() else 0
+        rec = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "path": it["path"],
+            "status": status,
+            "src_bytes": it.get("size", 0),
+            "out_bytes": size,
+            "msg": msg,
+            "title": it.get("title", ""),
+            **extra,
+        }
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+        return size
+
+    def row(it: dict[str, Any], status: str, msg: str = "", **more: Any) -> None:
+        result.rows.append(
+            {
+                "title": it.get("title", it["path"]),
+                "status": status,
+                "msg": msg,
+                "src": 0,
+                "out": 0,
+                "cq": cfg.cq,
+                **more,
+            }
+        )
+
+    with keep_awake():
+        for it in items:
+            why = core.stop_reason(
+                tried=tried,
+                limit=cfg.limit,
+                produced_bytes=sum(accepted.values()),
+                max_gb=cfg.max_gb,
+                stop_file=(out_dir / "STOP").exists(),
+            )
+            if why:
+                result.stopped = why
+                break
+            if not core.should_process(it["path"], done, redo=redo):
+                continue
+            src = library / it["path"]
+            out = output_path(out_dir, it["path"])
+            if not dry_run:
+                free = shutil.disk_usage(out_dir).free
+                if not core.has_room(free, int(it.get("size", 0)), cfg.spare_gb):
+                    result.stopped = "not enough free space in OUT_DIR"
+                    break
+            if dry_run:
+                result.planned.append(
+                    f"would convert {it['path']} ({int(it.get('size', 0)) // 1024**2} MB) with {encoder} CQ {cfg.cq}"
+                )
+                tried += 1
+                continue
+            if not src.is_file():
+                record(it, "missing", "source not found", None, {})
+                row(it, "missing", "source not found")
+                log(f"MISSING {src}")
+                continue
+            log(f"[{tried + 1}] {it.get('title', it['path'])}  ({int(it.get('size', 0)) // 1024**2} MB)")
+            mtime = src.stat().st_mtime
+            started = time.monotonic()
+            outcome = media.convert_file(cfg, src, out, encoder, cfg.cq, poll)
+            tried += 1
+            extra = {
+                "cq": cfg.cq,
+                "encoder": encoder,
+                "encode_seconds": round(time.monotonic() - started, 1),
+                "src_mtime": mtime,
+            }
+            if outcome.status == "accepted":
+                size = record(it, "accepted", "", out, extra)
+                accepted[it["path"]] = float(size)
+                ship_status, ship_msg = "", ""
+                if ship:
+                    log("  shipping to the server...")
+                    try:
+                        ship_status, ship_msg = ship(it, out, mtime)
+                    except Exception as err:  # noqa: BLE001 - one bad ship never stops the run; the file stays on this PC
+                        ship_status, ship_msg = "failed", f"ship error: {err}"
+                    log(
+                        "  swapped into the library"
+                        if ship_status == "swapped"
+                        else f"  not shipped ({ship_status}), kept here: {ship_msg}"
+                    )
+                row(
+                    it,
+                    "accepted",
+                    src=it.get("size", 0),
+                    out=size,
+                    ship=ship_status if ship_status == "swapped" else f"{ship_status} {ship_msg}".strip(),
+                )
+            else:
+                if outcome.status == "rejected":
+                    out.unlink(missing_ok=True)
+                    accepted.pop(it["path"], None)
+                record(it, outcome.status, outcome.msg, None, extra)
+                row(it, outcome.status, outcome.msg)
+                log(f"  {outcome.status}: {outcome.msg}")
+
+    if dry_run:
+        result.report = "\n".join(result.planned) or "Nothing to do."
+    else:
+        result.report = core.format_report(
+            result.rows, f"Conversion report {datetime.now().isoformat(timespec='seconds')}  (OUT_DIR {out_dir})"
+        )
+        (out_dir / "REPORT.txt").write_text(result.report + "\n", encoding="utf-8")
+    return result

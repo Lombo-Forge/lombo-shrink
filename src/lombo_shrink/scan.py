@@ -1,0 +1,48 @@
+"""The candidate list: every video under the library that would be worth converting, biggest first.
+
+This replaces the private admin panel the original read its list from. It only reads the library.
+"""
+
+import os
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from . import core, media
+from .config import Config
+
+SKIP_DIRS = {"convert-holding", "lombo-shrink-holding"}
+
+
+def scan(cfg: Config, progress: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
+    """Walk the library, probe each video and keep the ones `core.skip_reason` lets through."""
+    root = Path(cfg.library_dir)
+    found: list[dict[str, Any]] = []
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
+        for name in sorted(files):
+            path = Path(dirpath) / name
+            if not name.lower().endswith(core.VIDEO_EXTENSIONS) or "sample" in name.lower() or name.startswith("."):
+                continue
+            if path.is_symlink():
+                continue
+            st = path.stat()
+            if cfg.skip_hardlinked and st.st_nlink >= 2:
+                continue  # a torrent still seeds it: replacing the name would store the data twice
+            info = media.probe(cfg.ffprobe, str(path))
+            if info is None:
+                if progress:
+                    progress(f"unreadable, left out: {path}")
+                continue
+            if core.skip_reason(info, st.st_size, allow_hevc=cfg.allow_hevc, min_bpp=cfg.min_bpp):
+                continue
+            video = core.real_video(info)[0]
+            found.append(
+                {
+                    "path": path.relative_to(root).as_posix(),
+                    "size": st.st_size,
+                    "codec": video.get("codec_name"),
+                    "title": path.stem,
+                }
+            )
+    return core.sort_candidates(found)
