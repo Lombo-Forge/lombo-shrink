@@ -1,7 +1,8 @@
 """A conversion session is a lock file with an expiry. While it is open, `swap --apply` is allowed to replace
 files, and other tools (a nightly mover, for example) can check the same file and stand down.
 
-The file is JSON: {"opened": <epoch seconds>, "expires": <epoch seconds>}. It expires by itself.
+The file is JSON: {"version": 1, "owner": "lombo-shrink", "opened": <epoch seconds>, "expires": <epoch seconds>}. It
+expires by itself. Other tools read "version", "owner" and "expires" (the contract in the hub repository).
 """
 
 import json
@@ -16,7 +17,8 @@ def open_session(path: Path, hours: int, now: float | None = None) -> float:
     expires = opened + hours * 3600
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps({"opened": int(opened), "expires": int(expires)}) + "\n")
+    body = {"version": 1, "owner": "lombo-shrink", "opened": int(opened), "expires": int(expires)}
+    tmp.write_text(json.dumps(body) + "\n")
     tmp.replace(path)
     return expires
 

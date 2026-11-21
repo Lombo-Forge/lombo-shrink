@@ -43,6 +43,7 @@ class Config:
     margin_gb: float
     require_session: bool
     session_file: str
+    post_swap_command: tuple[str, ...]  # run once after a real swap; empty means none
     # ---- PC to server (ship)
     ship_target: str  # user@host; empty means do not ship
     ssh_command: tuple[str, ...]
@@ -84,6 +85,12 @@ def from_env(env: dict[str, str]) -> Config:
         if value and (urlparse(value).scheme not in {"http", "https"} or not urlparse(value).netloc):
             raise ConfigError(f"{PREFIX}{name} must be a full http:// or https:// URL (or empty), got {value!r}")
         return value or None
+
+    def optional_command(name: str) -> tuple[str, ...]:
+        try:
+            return tuple(shlex.split(get(name)))
+        except ValueError as e:
+            raise ConfigError(f"{PREFIX}{name} is not a valid command: {e}") from None
 
     def command(name: str, default: str) -> tuple[str, ...]:
         try:
@@ -133,6 +140,7 @@ def from_env(env: dict[str, str]) -> Config:
         margin_gb=number("MARGIN_GB", "20", kind=float, minimum=0, maximum=100000),
         require_session=_truthy(get("REQUIRE_SESSION", "true") or "true", "REQUIRE_SESSION"),
         session_file=get("SESSION_FILE", str(Path(stage) / "session.json")),
+        post_swap_command=optional_command("POST_SWAP_COMMAND"),
         ship_target=get("SHIP_TARGET"),
         ssh_command=command("SSH_COMMAND", "ssh"),
         scp_command=command("SCP_COMMAND", "scp"),

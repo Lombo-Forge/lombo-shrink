@@ -302,6 +302,33 @@ def test_a_failing_refresh_is_a_note_not_a_failed_swap(s):
     assert "refresh failed (down)" in r[0].note
 
 
+def test_post_swap_command_runs_once_with_the_swapped_paths(s, tmp_path):
+    out = tmp_path / "hook.out"
+    script = tmp_path / "hook.sh"
+    script.write_text(f'#!/bin/sh\nprintf %s "$LOMBO_SHRINK_SWAPPED_JSON" > {out}\n')
+    script.chmod(0o755)
+    s.env["LOMBO_SHRINK_POST_SWAP_COMMAND"] = str(script)
+    entries = [s.entry()]
+    swap.run_swap(s.cfg(), entries, apply=False, session_open=True)
+    assert not out.exists()  # a dry run never starts it
+    r = swap.run_swap(s.cfg(), entries, apply=True, session_open=True)
+    assert r[0].status == "swapped"
+    assert "post-swap" not in r[0].note
+    assert json.loads(out.read_text()) == [entries[0].path]
+
+
+def test_a_failing_post_swap_command_is_a_note_not_a_failed_swap(s, tmp_path):
+    script = tmp_path / "bad.sh"
+    script.write_text("#!/bin/sh\nexit 3\n")
+    script.chmod(0o755)
+    s.env["LOMBO_SHRINK_POST_SWAP_COMMAND"] = str(script)
+    r = swap.run_swap(s.cfg(), [s.entry()], apply=True, session_open=True)
+    assert r[0].status == "swapped"
+    assert "post-swap command failed (exit 3)" in r[0].note
+    s.env["LOMBO_SHRINK_POST_SWAP_COMMAND"] = str(tmp_path / "missing")
+    assert swap._post_swap(s.cfg(), ["/x"]) == "post-swap command failed (FileNotFoundError)"
+
+
 def write_manifest(s: Setup, **kw: object) -> Path:
     m = s.tmp / "manifest.json"
     m.write_text(
