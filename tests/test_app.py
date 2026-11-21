@@ -93,6 +93,12 @@ def test_session_lock(tmp_path):
     assert session.expiry(lock) is None
 
 
+def test_verbose_flag_works_before_and_after_the_subcommand():
+    bad = {"LOMBO_SHRINK_CQ": "x"}  # a config error (exit 2) proves the arguments themselves parsed
+    for argv in (["-v", "plan"], ["plan", "-v"], ["candidates", "-v"], ["run", "-v"], ["--verbose", "plan"]):
+        assert main(argv, bad) == 2, argv
+
+
 def test_session_command(env, capsys):
     assert main(["session", "status"], env) == 0
     assert capsys.readouterr().out.strip() == "Closed."

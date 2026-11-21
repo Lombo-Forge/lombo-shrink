@@ -239,15 +239,23 @@ def _session(cfg: Config, action: str, hours: int) -> int:
 
 
 def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
+    # Progress lines must appear as they happen, also when output is piped or captured (Python buffers it otherwise).
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(line_buffering=True)
     p = argparse.ArgumentParser(prog="lombo-shrink", description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("-v", "--verbose", action="store_true", help="say why files are left out of the list")
+    # The same flag after the subcommand too (`candidates -v`); SUPPRESS keeps a `-v` given before it.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor")
-    cand = sub.add_parser("candidates")
+    cand = sub.add_parser("candidates", parents=[common])
     cand.add_argument("--out")
-    sub.add_parser("plan").add_argument("--list")
-    run = sub.add_parser("run")
+    sub.add_parser("plan", parents=[common]).add_argument("--list")
+    run = sub.add_parser("run", parents=[common])
     run.add_argument("--list")
     run.add_argument("--redo", action="store_true", help="also redo files already accepted, rejected or skipped")
     sub.add_parser("review")

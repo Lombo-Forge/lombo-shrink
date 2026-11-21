@@ -122,6 +122,17 @@ def test_accept_reports_every_broken_rule():
     assert any("packet count" in p for p in accept(src, out, out_packets=99))
     assert any("could not count" in p for p in accept(src, out, src_packets=-1))
     assert any("decode check failed" in p for p in accept(src, out, decode_error="bad frame"))
+    for src_tag, out_tag in ((None, "eng"), ("und", "eng"), ("und", "und"), ("", "und")):
+        untagged = copy.deepcopy(src)
+        untagged["streams"][1]["tags"] = {} if src_tag is None else {"language": src_tag}
+        mkv = copy.deepcopy(out)
+        mkv["streams"][1]["tags"] = {"language": out_tag}
+        assert not [p for p in accept(untagged, mkv) if "language" in p], (src_tag, out_tag)
+    real_change = copy.deepcopy(out)
+    real_change["streams"][1]["tags"] = {"language": "eng"}
+    fra = copy.deepcopy(src)
+    fra["streams"][1]["tags"] = {"language": "fra"}
+    assert any("language differs" in p for p in accept(fra, real_change))
     broken = copy.deepcopy(out)
     broken["streams"][0].update(width=1280, height=720, display_aspect_ratio="4:3", r_frame_rate="30/1")
     broken["streams"][1]["tags"]["language"] = "fra"
