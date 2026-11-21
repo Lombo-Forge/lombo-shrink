@@ -39,7 +39,10 @@ Run it from a normal terminal; map the library to a drive letter and use it as `
 2. Set, in the environment the ssh command will see: `LOMBO_SHRINK_LIBRARY_DIR` (or `BRANCHES` with mergerfs),
    `LOMBO_SHRINK_STAGE_DIR`, and `LOMBO_SHRINK_DRY_RUN=false` (the swap refuses to apply otherwise). Optionally
    `LOMBO_SHRINK_JELLYFIN_URL` and key, so Jellyfin is asked to rescan after a swap.
-3. Make the account that runs it able to write the library folders (same owner as the media files).
+3. Make the account that runs it able to write the library folders (same owner as the media files). The image
+   does not run as root: it defaults to user `1000:1000`, and `compose.example.yaml` sets `user:` to the owner of
+   your media files. With plain `docker run`, pass `--user <uid>:<gid>` of that owner. Root is not needed: when the
+   swap cannot copy the original file's owner it says so in the result and carries on.
 4. With mergerfs: `LOMBO_SHRINK_BRANCHES=/mnt/disk1/media:/mnt/disk2/media` (the library folder on each disk).
 
 Because ssh runs non-interactive shells, put the settings in a small wrapper script on the server and point
