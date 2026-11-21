@@ -94,20 +94,20 @@ def _runs(binary: str) -> bool:
         return False
 
 
-def _load_items(cfg: Config, list_file: str | None) -> list[dict[str, Any]]:
+def _load_items(cfg: Config, list_file: str | None, verbose: bool = False) -> list[dict[str, Any]]:
     if list_file:
         data = json.loads(Path(list_file).read_text(encoding="utf-8-sig"))
         if not isinstance(data, list):
             raise ValueError(f"{list_file} must hold a JSON list")
         return core.sort_candidates(data)
-    return scan.scan(cfg, lambda m: print(m, file=sys.stderr))
+    return scan.scan(cfg, lambda m: print(m, file=sys.stderr), verbose=verbose)
 
 
-def _candidates(cfg: Config, out: str | None) -> int:
+def _candidates(cfg: Config, out: str | None, verbose: bool = False) -> int:
     if (problem := _need_library(cfg)) is not None:
         print(f"[FAIL] {problem}", file=sys.stderr)
         return 1
-    items = scan.scan(cfg, lambda m: print(m, file=sys.stderr))
+    items = scan.scan(cfg, lambda m: print(m, file=sys.stderr), verbose=verbose)
     text = json.dumps(items, indent=1)
     if out:
         Path(out).write_text(text + "\n", encoding="utf-8")
@@ -118,7 +118,7 @@ def _candidates(cfg: Config, out: str | None) -> int:
     return 0
 
 
-def _batch(cfg: Config, list_file: str | None, *, dry: bool, redo: bool = False) -> int:
+def _batch(cfg: Config, list_file: str | None, *, dry: bool, redo: bool = False, verbose: bool = False) -> int:
     if (problem := _need_library(cfg)) is not None:
         print(f"[FAIL] {problem}", file=sys.stderr)
         return 1
@@ -126,7 +126,7 @@ def _batch(cfg: Config, list_file: str | None, *, dry: bool, redo: bool = False)
     if name is None:
         print(f"[FAIL] {why}", file=sys.stderr)
         return 1
-    items = _load_items(cfg, list_file)
+    items = _load_items(cfg, list_file, verbose)
     if not dry and (err := media.encoder_error(cfg.ffmpeg, name, cfg.cq)):
         print(f"[FAIL] {core.ENCODER_CODECS[name]} does not work here: {err}", file=sys.stderr)
         return 1
@@ -241,6 +241,7 @@ def _session(cfg: Config, action: str, hours: int) -> int:
 def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="lombo-shrink", description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("-v", "--verbose", action="store_true", help="say why files are left out of the list")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor")
     cand = sub.add_parser("candidates")
@@ -269,11 +270,11 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         if args.cmd == "doctor":
             return doctor(cfg)
         if args.cmd == "candidates":
-            return _candidates(cfg, args.out)
+            return _candidates(cfg, args.out, args.verbose)
         if args.cmd == "plan":
-            return _batch(cfg, args.list, dry=True)
+            return _batch(cfg, args.list, dry=True, verbose=args.verbose)
         if args.cmd == "run":
-            return _batch(cfg, args.list, dry=cfg.dry_run, redo=args.redo)
+            return _batch(cfg, args.list, dry=cfg.dry_run, redo=args.redo, verbose=args.verbose)
         if args.cmd == "review":
             return _review(cfg)
         if args.cmd == "swap":
@@ -282,6 +283,9 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     except (OSError, ValueError) as e:
         print(f"[FAIL] {e}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("Interrupted. The unfinished file was removed; run again to resume.", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

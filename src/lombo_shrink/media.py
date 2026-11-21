@@ -119,6 +119,10 @@ def run_encode(
                 break
             except subprocess.TimeoutExpired:
                 pass
+            except BaseException:  # Ctrl+C or a signal: never leave ffmpeg running and holding the graphics card
+                proc.kill()
+                proc.wait()
+                raise
             size = partial.stat().st_size if partial.exists() else 0
             now = time.monotonic()
             if size != last_size:

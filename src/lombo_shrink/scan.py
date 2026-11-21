@@ -14,10 +14,11 @@ from .config import Config
 SKIP_DIRS = {"convert-holding", "lombo-shrink-holding"}
 
 
-def scan(cfg: Config, progress: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
+def scan(cfg: Config, progress: Callable[[str], None] | None = None, *, verbose: bool = False) -> list[dict[str, Any]]:
     """Walk the library, probe each video and keep the ones `core.skip_reason` lets through."""
     root = Path(cfg.library_dir)
     found: list[dict[str, Any]] = []
+    left_out = 0
     for dirpath, dirnames, files in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
         for name in sorted(files):
@@ -34,7 +35,11 @@ def scan(cfg: Config, progress: Callable[[str], None] | None = None) -> list[dic
                 if progress:
                     progress(f"unreadable, left out: {path}")
                 continue
-            if core.skip_reason(info, st.st_size, allow_hevc=cfg.allow_hevc, min_bpp=cfg.min_bpp):
+            reason = core.skip_reason(info, st.st_size, allow_hevc=cfg.allow_hevc, min_bpp=cfg.min_bpp)
+            if reason:
+                left_out += 1
+                if verbose and progress:
+                    progress(f"left out: {path.relative_to(root).as_posix()} ({reason})")
                 continue
             video = core.real_video(info)[0]
             found.append(
@@ -45,4 +50,6 @@ def scan(cfg: Config, progress: Callable[[str], None] | None = None) -> list[dic
                     "title": path.stem,
                 }
             )
+    if left_out and not verbose and progress:
+        progress(f"{left_out} files left out (run with -v to see why)")
     return core.sort_candidates(found)
