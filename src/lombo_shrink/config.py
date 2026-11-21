@@ -55,8 +55,14 @@ class Config:
     webhook_url: str | None
 
 
-def _truthy(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def _truthy(value: str, name: str) -> bool:
+    """Strict on/off: a typo such as DRY_RUN=treu is an error, never a silent 'off'."""
+    word = value.strip().lower()
+    if word in {"1", "true", "yes", "on"}:
+        return True
+    if word in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(f"{PREFIX}{name} must be true or false (got {value!r})")
 
 
 def from_env(env: dict[str, str]) -> Config:
@@ -104,7 +110,7 @@ def from_env(env: dict[str, str]) -> Config:
 
     stage = get("STAGE_DIR", str(Path.home() / "lombo-shrink-staging"))
     return Config(
-        dry_run=_truthy(get("DRY_RUN", "true") or "true"),
+        dry_run=_truthy(get("DRY_RUN", "true") or "true", "DRY_RUN"),
         library_dir=get("LIBRARY_DIR"),
         out_dir=get("OUT_DIR", "converted"),
         ffmpeg=get("FFMPEG", "ffmpeg"),
@@ -118,14 +124,14 @@ def from_env(env: dict[str, str]) -> Config:
         max_gb=number("MAX_GB", "0", kind=float, minimum=0, maximum=1000000),
         limit=int(number("LIMIT", "0", kind=int, minimum=0, maximum=1000000)),
         stall_minutes=int(number("STALL_MINUTES", "5", kind=int, minimum=1, maximum=240)),
-        allow_hevc=_truthy(get("ALLOW_HEVC", "false")),
+        allow_hevc=_truthy(get("ALLOW_HEVC", "false"), "ALLOW_HEVC"),
         extra_args=tuple(shlex.split(get("EXTRA_ENCODER_ARGS"))),
-        skip_hardlinked=_truthy(get("SKIP_HARDLINKED", "true")),
+        skip_hardlinked=_truthy(get("SKIP_HARDLINKED", "true"), "SKIP_HARDLINKED"),
         stage_dir=stage,
         branches=tuple(p for p in get("BRANCHES").split(":") if p),
-        keep_originals=_truthy(get("KEEP_ORIGINALS", "false")),
+        keep_originals=_truthy(get("KEEP_ORIGINALS", "false"), "KEEP_ORIGINALS"),
         margin_gb=number("MARGIN_GB", "20", kind=float, minimum=0, maximum=100000),
-        require_session=_truthy(get("REQUIRE_SESSION", "true") or "true"),
+        require_session=_truthy(get("REQUIRE_SESSION", "true") or "true", "REQUIRE_SESSION"),
         session_file=get("SESSION_FILE", str(Path(stage) / "session.json")),
         ship_target=get("SHIP_TARGET"),
         ssh_command=command("SSH_COMMAND", "ssh"),
