@@ -42,7 +42,7 @@ card's H.265 encoder (check with `ffmpeg -encoders`). Nothing else is installed.
 2. Copy `.env.example` to `.env`, set `LOMBO_SHRINK_LIBRARY_DIR` to the library as the PC sees it
    (a mapped network drive is fine; the scripts only read it) and `LOMBO_SHRINK_OUT_DIR` to a folder
    on a fast local drive. The program does not read `.env` itself: load it in your shell first (for example
-   `set -a; . ./.env; set +a`) or set the variables another way.
+   `set -a; . ./.env; set +a`; on Windows PowerShell, `. .\examples\load-env.ps1`) or set the variables another way.
 3. Run the checks and look at the plan:
    ```sh
    lombo-shrink doctor      # tests the encoder by encoding one second of generated video
@@ -102,8 +102,12 @@ Written plainly, as of the first build:
   encoder does not work.
 - **The swap was tested only in temporary folders**, against fake `ffprobe`, `ssh` and `scp` stand-ins, not
   against a real mergerfs pool, a real server over ssh, or a real Jellyfin.
-- **Native Windows was not tried** (the NVIDIA run was under WSL2): mapped network drives, paths with spaces and non-English
-  characters, keeping the PC awake, the STOP file and Ctrl+C there are untested.
+- **Native Windows 11 was tried with NVIDIA** (v0.1.1, an RTX 3080, a portable ffmpeg 9.1 build, Python 3.13): `doctor`, `candidates`,
+  `plan`, one real conversion into a folder with spaces and an accented letter in its name, the STOP file, Ctrl+C (exit 130, no
+  leftover file) and the resume all passed. **Not verified on Windows:** keeping the PC awake (the test machine was held awake by
+  something else, so the result proves nothing), a mapped network drive or a UNC path, and playback in a player.
+- A source `.mp4` whose audio has no language tag was refused by the language check (the mkv reads back its default, `eng`). Fixed
+  after that run; checked with unit tests only, not re-run on Windows.
 - The per-file quality probe (VMAF) of the original scripts is **not included**: a fixed CQ is used.
 - There is no standalone ship command. Files converted earlier and still on the PC are shipped by the next
   `run` (that file must still be in the candidate list); that retry was tested only with stand-ins.

@@ -60,6 +60,16 @@ def _lang(stream: Probe) -> str:
     return str((stream.get("tags") or {}).get("language", "")).lower()
 
 
+_UNSET_LANGS = {"", "und", "unk"}
+
+
+def _same_language(src: Probe, out: Probe) -> bool:
+    """Equal language tags. An untagged or `und` source may read back as `eng` from the mkv (Matroska's default for a
+    track with no language set), which is not a change the conversion made. Any other difference (fra vs eng) counts."""
+    a, b = _lang(src), _lang(out)
+    return a == b or (a in _UNSET_LANGS and b in _UNSET_LANGS | {"eng"})
+
+
 def _flag(stream: Probe, name: str) -> int:
     return int((stream.get("disposition") or {}).get(name, 0) or 0)
 
@@ -265,7 +275,7 @@ def _compare(src: Probe, out: Probe, src_packets: int, out_packets: int) -> list
             c1, c2 = x.get("codec_name"), y.get("codec_name")
             if c1 != c2 and not (kind == "subtitle" and c1 == "mov_text" and c2 == "subrip"):
                 problems.append(f"{kind} {i} codec differs ({c1} vs {c2})")
-            if _lang(x) != _lang(y):
+            if not _same_language(x, y):
                 problems.append(f"{kind} {i} language differs")
             if _flag(x, "default") != _flag(y, "default") or _flag(x, "forced") != _flag(y, "forced"):
                 problems.append(f"{kind} {i} default/forced differs")
