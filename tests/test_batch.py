@@ -3,6 +3,7 @@
 import json
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 from typing import ClassVar
@@ -203,7 +204,9 @@ def test_batch_stop_file_limit_and_space(lab, tmp_path):
         dry_run=False,
         log=lambda _: None,
     )
-    assert res.stopped == "not enough free space in OUT_DIR"
+    assert res.stopped.startswith("not enough free space in OUT_DIR (")
+    assert "GB free" in res.stopped
+    assert "99999 GB SPARE_GB reserve" in res.stopped
 
 
 def test_batch_survives_a_crashing_ship(lab):
@@ -352,3 +355,34 @@ def test_sources_differing_only_in_container_get_different_outputs(tmp_path):
     assert batch.output_path(out, "m/A.MKV") == out / "m" / "A.hevc.mkv"
     assert batch.output_path(out, "m/A.mkv") != batch.output_path(out, "m/A.mp4")
     assert batch.output_path(out, "x/A.mkv") != batch.output_path(out, "y/A.mkv")
+
+
+def test_scan_says_why_files_are_left_out(lab, tmp_path):
+    _, hevc = make_bins(tmp_path / "bin3", video_probe("hevc"), video_probe("hevc"))
+    quiet: list[str] = []
+    assert scan.scan(lab.cfg(LOMBO_SHRINK_FFPROBE=hevc), quiet.append) == []
+    assert quiet == ["1 files left out (run with -v to see why)"]
+    loud: list[str] = []
+    scan.scan(lab.cfg(LOMBO_SHRINK_FFPROBE=hevc), loud.append, verbose=True)
+    assert len(loud) == 1
+    assert loud[0].startswith("left out: m/Foo (2019).mkv (")
+
+
+def test_ctrl_c_during_an_encode_kills_ffmpeg(tmp_path):
+    started: list[subprocess.Popen] = []
+
+    class Interrupted(subprocess.Popen):
+        def wait(self, timeout=None):
+            if not started:
+                started.append(self)
+                raise KeyboardInterrupt
+            return super().wait(timeout)
+
+    real = subprocess.Popen
+    subprocess.Popen = Interrupted  # type: ignore[misc]
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            media.run_encode(["sleep", "30"], tmp_path / "x.partial.mkv", 10, 60, poll=0.1)
+    finally:
+        subprocess.Popen = real  # type: ignore[misc]
+    assert started[0].poll() is not None  # the child is gone, nothing keeps the graphics card busy

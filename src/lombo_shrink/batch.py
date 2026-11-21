@@ -162,7 +162,11 @@ def run_batch(
             if not dry_run:
                 free = shutil.disk_usage(out_dir).free
                 if not core.has_room(free, int(it.get("size", 0)), cfg.spare_gb):
-                    result.stopped = "not enough free space in OUT_DIR"
+                    need = (int(it.get("size", 0)) * 1.1 + cfg.spare_gb * 1024**3) / 1024**3
+                    result.stopped = (
+                        f"not enough free space in OUT_DIR ({free / 1024**3:.1f} GB free, "
+                        f"{need:.1f} GB needed including the {cfg.spare_gb:g} GB SPARE_GB reserve)"
+                    )
                     break
             if dry_run:
                 result.planned.append(

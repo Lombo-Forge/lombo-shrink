@@ -41,14 +41,15 @@ card's H.265 encoder (check with `ffmpeg -encoders`). Nothing else is installed.
 1. `pip install .` in this folder (or `pipx install .`).
 2. Copy `.env.example` to `.env`, set `LOMBO_SHRINK_LIBRARY_DIR` to the library as the PC sees it
    (a mapped network drive is fine; the scripts only read it) and `LOMBO_SHRINK_OUT_DIR` to a folder
-   on a fast local drive.
+   on a fast local drive. The program does not read `.env` itself: load it in your shell first (for example
+   `set -a; . ./.env; set +a`) or set the variables another way.
 3. Run the checks and look at the plan:
    ```sh
    lombo-shrink doctor      # tests the encoder by encoding one second of generated video
    lombo-shrink plan
    ```
 4. Convert one file first: set `LOMBO_SHRINK_LIMIT=1` and `LOMBO_SHRINK_DRY_RUN=false`, run
-   `lombo-shrink run`, and play `converted/...hevc.mkv` in your player.
+   `lombo-shrink run`, and play `<OUT_DIR>/<source name>.hevc.mkv` in your player.
 
 That much only reads the library and writes into `OUT_DIR`. To swap files into the server's library,
 follow [docs/setup.md](docs/setup.md) (install on the server too, set up key-only ssh, open a session).
@@ -93,14 +94,16 @@ Everything is an environment variable, listed with defaults in [.env.example](.e
 
 Written plainly, as of the first build:
 
-- **Real encodes were checked only with the processor encoder (`x265`)** and a real ffmpeg, on generated test
-  video. NVIDIA (`nvenc`) uses the settings measured on an RTX 3080 (preset p6, 10-bit, CQ 26) but the
-  Python version of the runner has not been run on a graphics card yet. **AMD (`amf`), Intel (`qsv`) and
-  macOS (`videotoolbox`) are best-effort mappings, never run on that hardware.** `doctor` tells you at once if
-  an encoder does not work.
+- **NVIDIA (`nvenc`) has been run on a real graphics card:** an RTX 3080 (driver 610.88) under WSL2 Ubuntu, with a
+  static ffmpeg build. `doctor` passed, and two real 21-minute episodes were converted at about 5.8 times real
+  time, 78% and 79% smaller, with all audio and subtitle tracks kept and a clean full decode. That run found the
+  Ctrl+C bug fixed in 0.1.1. Playback in a media player was not checked. **AMD (`amf`), Intel (`qsv`) and macOS
+  (`videotoolbox`) are best-effort mappings, never run on that hardware.** `doctor` tells you at once if an
+  encoder does not work.
 - **The swap was tested only in temporary folders**, against fake `ffprobe`, `ssh` and `scp` stand-ins, not
   against a real mergerfs pool, a real server over ssh, or a real Jellyfin.
-- Windows was not tried at all (the code avoids platform-specific calls apart from keeping the PC awake).
+- **Native Windows was not tried** (the NVIDIA run was under WSL2): mapped network drives, paths with spaces and non-English
+  characters, keeping the PC awake, the STOP file and Ctrl+C there are untested.
 - The per-file quality probe (VMAF) of the original scripts is **not included**: a fixed CQ is used.
 - There is no standalone ship command. Files converted earlier and still on the PC are shipped by the next
   `run` (that file must still be in the candidate list); that retry was tested only with stand-ins.

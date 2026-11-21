@@ -176,3 +176,14 @@ def test_review_lists_unshipped_files(env, tmp_path, capsys):
     assert "m/A.mkv" in text
     assert "m/B.mkv" not in text
     assert "1 converted files still on this PC" in text
+
+
+def test_ctrl_c_exits_cleanly_with_code_130(env, capsys, monkeypatch):
+    from lombo_shrink import cli
+
+    def boom(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_candidates", boom)
+    assert cli.main(["candidates"], env) == 130
+    assert "Interrupted" in capsys.readouterr().err
