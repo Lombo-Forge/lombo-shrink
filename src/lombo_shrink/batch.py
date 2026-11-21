@@ -47,7 +47,11 @@ def keep_awake() -> Iterator[None]:
 
 
 def output_path(out_dir: Path, rel: str) -> Path:
-    return out_dir / (str(Path(rel).with_suffix("")) + ".hevc.mkv")
+    """`a.mkv` -> `a.hevc.mkv`; any other container keeps its extension (`a.mp4` -> `a.mp4.hevc.mkv`), so
+    two sources that differ only in container never share one output."""
+    p = Path(rel)
+    stem = str(p.with_suffix("")) if p.suffix.lower() == ".mkv" else rel
+    return out_dir / (stem + ".hevc.mkv")
 
 
 def _read_log(path: Path) -> list[dict[str, Any]]:
@@ -82,7 +86,9 @@ def run_batch(
         for stale in out_dir.rglob("*.partial.mkv"):
             stale.unlink(missing_ok=True)
     log_path = out_dir / "convert-log.jsonl"
-    done, accepted = core.resume_state(_read_log(log_path))
+    records = _read_log(log_path)
+    done, accepted = core.resume_state(records)
+    converted_mtime = {str(r["path"]): float(r.get("src_mtime") or 0) for r in records if r.get("status") == "accepted"}
     tried = 0
 
     def record(it: dict[str, Any], status: str, msg: str, out: Path | None, extra: dict[str, Any]) -> int:
@@ -114,6 +120,17 @@ def run_batch(
             }
         )
 
+    def try_ship(it: dict[str, Any], out: Path, mtime: float) -> tuple[str, str]:
+        if not ship:
+            return "", ""
+        log("  shipping to the server...")
+        try:
+            status, msg = ship(it, out, mtime)
+        except Exception as err:  # noqa: BLE001 - one bad ship never stops the run; the file stays on this PC
+            status, msg = "failed", f"ship error: {err}"
+        log("  swapped into the library" if status == "swapped" else f"  not shipped ({status}), kept here: {msg}")
+        return status, msg
+
     with keep_awake():
         for it in items:
             why = core.stop_reason(
@@ -126,10 +143,22 @@ def run_batch(
             if why:
                 result.stopped = why
                 break
-            if not core.should_process(it["path"], done, redo=redo):
-                continue
             src = library / it["path"]
             out = output_path(out_dir, it["path"])
+            if not core.should_process(it["path"], done, redo=redo):
+                # Converted earlier but never shipped (server was down): ship it now, do not re-encode.
+                if ship and not dry_run and done.get(it["path"]) == "accepted" and out.is_file():
+                    size = out.stat().st_size
+                    log(f"[retry] {it.get('title', it['path'])}")
+                    st, msg = try_ship(it, out, converted_mtime.get(it["path"], 0.0))
+                    row(
+                        it,
+                        "accepted",
+                        src=it.get("size", 0),
+                        out=size,
+                        ship=st if st == "swapped" else f"{st} {msg}".strip(),
+                    )
+                continue
             if not dry_run:
                 free = shutil.disk_usage(out_dir).free
                 if not core.has_room(free, int(it.get("size", 0)), cfg.spare_gb):
@@ -160,18 +189,7 @@ def run_batch(
             if outcome.status == "accepted":
                 size = record(it, "accepted", "", out, extra)
                 accepted[it["path"]] = float(size)
-                ship_status, ship_msg = "", ""
-                if ship:
-                    log("  shipping to the server...")
-                    try:
-                        ship_status, ship_msg = ship(it, out, mtime)
-                    except Exception as err:  # noqa: BLE001 - one bad ship never stops the run; the file stays on this PC
-                        ship_status, ship_msg = "failed", f"ship error: {err}"
-                    log(
-                        "  swapped into the library"
-                        if ship_status == "swapped"
-                        else f"  not shipped ({ship_status}), kept here: {ship_msg}"
-                    )
+                ship_status, ship_msg = try_ship(it, out, mtime)
                 row(
                     it,
                     "accepted",

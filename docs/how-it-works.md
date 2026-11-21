@@ -50,7 +50,7 @@ fails, the encode is retried once with processor decoding.
 
 | Status | Meaning | Retried? |
 |---|---|---|
-| `accepted` | converted, checked | no |
+| `accepted` | converted, checked | no (but if shipping is on and the file was not swapped in, the next run ships it again without re-encoding) |
 | `skipped` | a skip rule applied | no |
 | `rejected` | a quality, size or integrity rule said no | no (a starved source would only get harsher quantisation) |
 | `missing` | the source file was not found | no |
@@ -63,7 +63,12 @@ fails, the encode is retried once with processor decoding.
 See the list in `src/lombo_shrink/swap.py`. In short: session open, staged file verified by size and sha256,
 original unchanged, staged video is HEVC (when ffprobe exists on the server), room on the original's disk,
 copy next to the original, sha256 again, copy mode/owner/time, rename into place, remove the original (or move it
-to `<library folder>-shrink-holding/` with `KEEP_ORIGINALS`), then clean the staging folder.
+to `.lombo-shrink-holding/` inside the library folder with `KEEP_ORIGINALS`, so it is always on the same disk),
+then clean the staging folder. The original is checked once more right before the rename; a change in the few
+microseconds after that check is not caught.
+
+On the PC, the output name of a non-mkv source keeps its extension (`A.mp4` becomes `A.mp4.hevc.mkv`), so an
+`A.mkv` and an `A.mp4` in one folder never share an output file.
 
 With mergerfs, set `BRANCHES` to the library folder on each disk (colon separated) so the new file lands on the
 same disk as the original; writing through the pool path would let the pool's create policy choose a disk.
