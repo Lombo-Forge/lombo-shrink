@@ -179,7 +179,7 @@ def test_mp4_with_a_different_mkv_already_there_is_refused(s):
 def test_keep_originals_moves_them_to_the_holding_folder(tmp_path):
     s = Setup(tmp_path, LOMBO_SHRINK_KEEP_ORIGINALS="true")
     r = swap.swap_one(s.cfg(), s.entry(), apply=True)
-    held = tmp_path / "lib-shrink-holding" / "m" / "Foo.mkv"
+    held = tmp_path / "lib" / ".lombo-shrink-holding" / "m" / "Foo.mkv"
     assert r.status == "swapped"
     assert held.read_bytes() == SRC
     assert s.orig.read_bytes() == NEW
@@ -191,6 +191,50 @@ def test_keep_originals_moves_them_to_the_holding_folder(tmp_path):
     s.staged.write_bytes(NEW)
     swap.swap_one(s.cfg(), s.entry(), apply=True)
     assert len(list(held.parent.iterdir())) == 2
+
+
+def test_keep_originals_never_crosses_a_mount(tmp_path, monkeypatch):
+    """A library that is its own mount: a rename out of it fails with EXDEV, so the held copy must stay inside."""
+    s = Setup(tmp_path, LOMBO_SHRINK_KEEP_ORIGINALS="true")
+    real_replace = os.replace
+
+    def replace(a, b):
+        if Path(a).is_relative_to(s.lib) != Path(b).is_relative_to(s.lib):
+            raise OSError(18, "Invalid cross-device link")
+        real_replace(a, b)
+
+    monkeypatch.setattr(os, "replace", replace)
+    r = swap.swap_one(s.cfg(), s.entry(), apply=True)
+    assert r.status == "swapped", r
+    assert (s.lib / swap.HOLDING_DIR / "m" / "Foo.mkv").read_bytes() == SRC
+    assert s.orig.read_bytes() == NEW
+
+
+def test_original_changed_during_the_copy_is_not_overwritten(s, monkeypatch):
+    real_copy = swap.shutil.copyfile
+
+    def copy_then_upgrade(src, dst):
+        real_copy(src, dst)
+        s.orig.write_bytes(b"upgraded by sonarr")
+
+    monkeypatch.setattr(swap.shutil, "copyfile", copy_then_upgrade)
+    r = swap.swap_one(s.cfg(), s.entry(), apply=True)
+    assert (r.status, "changed while the copy" in r.reason) == ("failed", True)
+    assert s.orig.read_bytes() == b"upgraded by sonarr"
+    assert [p.name for p in s.orig.parent.iterdir()] == ["Foo.mkv"]  # temp file removed
+
+
+def test_original_vanishing_during_the_copy_fails_cleanly(s, monkeypatch):
+    real_copy = swap.shutil.copyfile
+
+    def copy_then_delete(src, dst):
+        real_copy(src, dst)
+        s.orig.unlink()
+
+    monkeypatch.setattr(swap.shutil, "copyfile", copy_then_delete)
+    r = swap.swap_one(s.cfg(), s.entry(), apply=True)
+    assert (r.status, "could not be re-checked" in r.reason) == ("failed", True)
+    assert not list(s.orig.parent.iterdir())
 
 
 def test_hard_linked_original_is_replaced_by_name_only(s):

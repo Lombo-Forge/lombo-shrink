@@ -102,8 +102,11 @@ Written plainly, as of the first build:
   against a real mergerfs pool, a real server over ssh, or a real Jellyfin.
 - Windows was not tried at all (the code avoids platform-specific calls apart from keeping the PC awake).
 - The per-file quality probe (VMAF) of the original scripts is **not included**: a fixed CQ is used.
-- There is no standalone command yet to ship files that were converted earlier and are still on the PC
-  (the original had one). Use `run --redo`, or copy them in yourself after checking them.
+- There is no standalone ship command. Files converted earlier and still on the PC are shipped by the next
+  `run` (that file must still be in the candidate list); that retry was tested only with stand-ins.
+- A library file that changes in the instant between the last re-check and the rename is not caught.
+- `KEEP_ORIGINALS` holds originals in `.lombo-shrink-holding` inside the library; tested with a simulated mount
+  boundary, not a real separate mount.
 - Sonarr and Radarr are not told about a swap (only Jellyfin is, if configured). After a swap from
   another container such as `.mp4`, rescan the title in the arr app.
 

@@ -59,8 +59,8 @@ On the server: `lombo-shrink session open 2` (the swap refuses without it, and i
 
 On the PC: set `LOMBO_SHRINK_LIMIT=1` and `LOMBO_SHRINK_DRY_RUN=false`, run `lombo-shrink run`. Watch the lines:
 `shipping to the server...`, then `swapped into the library`. Play the title in Jellyfin. Only then raise the limit.
-Keep `LOMBO_SHRINK_KEEP_ORIGINALS=true` on the server for the first runs: originals go to a holding folder next to
-the library that nothing clears; delete it yourself when you are happy.
+Keep `LOMBO_SHRINK_KEEP_ORIGINALS=true` on the server for the first runs: originals go to a `.lombo-shrink-holding` folder
+inside the library (same disk) that nothing clears; delete it yourself when you are happy.
 
 Close the session when done: `lombo-shrink session close`.
 
@@ -68,6 +68,6 @@ A dry run of the server side at any time: `lombo-shrink swap --manifest M --resu
 
 ## Without shipping
 
-Leave `SHIP_TARGET` empty. Converted files stay in `OUT_DIR`; `lombo-shrink review` lists them. Nothing here
-ships files that are already converted: set up the server side and use `--redo` to convert and ship them again,
-or copy files into the library yourself after checking them.
+Leave `SHIP_TARGET` empty. Converted files stay in `OUT_DIR`; `lombo-shrink review` lists them. Once you set up the server
+side, the next `run` ships the files that are already converted (no re-encode); or copy files into the library
+yourself after checking them.

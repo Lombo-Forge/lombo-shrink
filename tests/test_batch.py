@@ -314,3 +314,41 @@ def test_ship_reports_an_unreachable_server(lab):
     status, why = ship.ship_file(cfg, {"path": "m/Foo (2019).mkv", "size": 1000}, lab.path, 0.0, lab.path.parent)
     assert status == "failed"
     assert why
+
+
+def test_an_unshipped_conversion_is_shipped_on_the_next_run_without_re_encoding(lab):
+    calls: list[str] = []
+
+    def down(item, out, mtime):
+        calls.append("down")
+        return "failed", "server down"
+
+    def up(item, out, mtime):
+        calls.append(f"up {mtime}")
+        out.unlink()
+        return "swapped", ""
+
+    cfg = lab.cfg()
+    batch.run_batch(cfg, lab.items, "nvenc", dry_run=False, ship=down, log=lambda _: None, poll=0.1)
+    out = Path(cfg.out_dir) / "m" / "Foo (2019).hevc.mkv"
+    assert out.exists()
+    # dry run and no-ship runs change nothing
+    assert batch.run_batch(cfg, lab.items, "nvenc", dry_run=True, ship=up).planned == []
+    assert batch.run_batch(cfg, lab.items, "nvenc", dry_run=False, log=lambda _: None).rows == []
+    assert calls == ["down"]
+    res = batch.run_batch(cfg, lab.items, "nvenc", dry_run=False, ship=up, log=lambda _: None, poll=0.1)
+    assert [r["ship"] for r in res.rows] == ["swapped"]
+    assert log_statuses(Path(cfg.out_dir)) == ["accepted"]  # not encoded a second time
+    assert calls[1].startswith("up ")
+    assert calls[1] != "up 0.0"
+    # shipped: the next run finds nothing to do
+    assert batch.run_batch(cfg, lab.items, "nvenc", dry_run=False, ship=up, log=lambda _: None).rows == []
+
+
+def test_sources_differing_only_in_container_get_different_outputs(tmp_path):
+    out = tmp_path / "o"
+    assert batch.output_path(out, "m/A.mkv") == out / "m" / "A.hevc.mkv"
+    assert batch.output_path(out, "m/A.mp4") == out / "m" / "A.mp4.hevc.mkv"
+    assert batch.output_path(out, "m/A.MKV") == out / "m" / "A.hevc.mkv"
+    assert batch.output_path(out, "m/A.mkv") != batch.output_path(out, "m/A.mp4")
+    assert batch.output_path(out, "x/A.mkv") != batch.output_path(out, "y/A.mkv")

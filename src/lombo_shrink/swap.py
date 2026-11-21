@@ -29,6 +29,8 @@ from . import core, media
 from .config import Config
 from .core import Entry
 
+HOLDING_DIR = ".lombo-shrink-holding"
+
 
 @dataclass
 class SwapResult:
@@ -180,7 +182,9 @@ def swap_one(cfg: Config, e: Entry, *, apply: bool) -> SwapResult:
 
     hold: Path | None = None
     if cfg.keep_originals:
-        hold = branch.parent / f"{branch.name}-shrink-holding" / e.path
+        # Inside the branch, so it is always the same filesystem as the file (a rename never crosses devices,
+        # even when the library is its own mount). The dot name keeps scans and media servers away from it.
+        hold = branch / HOLDING_DIR / e.path
         if hold.exists():
             hold = hold.with_name(f"{hold.name}.{int(time.time())}")
         try:
@@ -188,6 +192,17 @@ def swap_one(cfg: Config, e: Entry, *, apply: bool) -> SwapResult:
         except OSError:
             tmp.unlink(missing_ok=True)
             return fail("could not create the holding folder")
+
+    # shortcut: the original is re-checked just before the rename, but a change in the few microseconds between
+    # that check and the rename is not caught (no file locking on shared library mounts).
+    try:
+        now = orig.stat()
+        if now.st_size != ost.st_size or now.st_mtime_ns != ost.st_mtime_ns:
+            tmp.unlink(missing_ok=True)
+            return fail("original changed while the copy was made (size or modified time moved)")
+    except OSError as err:
+        tmp.unlink(missing_ok=True)
+        return fail(f"original could not be re-checked: {err}")
 
     try:
         if final == orig:

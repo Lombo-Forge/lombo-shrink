@@ -175,11 +175,7 @@ def _review(cfg: Config) -> int:
         except ValueError:
             continue
     _, accepted = core.resume_state(records)
-    waiting = [
-        (p, b)
-        for p, b in accepted.items()
-        if (Path(cfg.out_dir) / (str(Path(p).with_suffix("")) + ".hevc.mkv")).exists()
-    ]
+    waiting = [(p, b) for p, b in accepted.items() if batch.output_path(Path(cfg.out_dir), p).exists()]
     for path, size in waiting:
         print(f"{path}  {size / 1024**2:,.0f} MB")
     print(f"{len(waiting)} converted files still on this PC, {sum(b for _, b in waiting) / 1024**3:.1f} GB")
