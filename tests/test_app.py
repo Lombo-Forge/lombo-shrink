@@ -85,6 +85,8 @@ def test_session_lock(tmp_path):
     assert until == 1000 + 7200
     assert session.expiry(lock, now=2000) == until
     assert session.expiry(lock, now=until + 1) is None  # expires by itself
+    body = json.loads(lock.read_text())
+    assert (body["version"], body["owner"], body["expires"]) == (1, "lombo-shrink", until)
     session.close_session(lock)
     assert session.expiry(lock) is None
     with pytest.raises(ValueError, match="1 to 72"):

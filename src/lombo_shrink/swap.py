@@ -17,9 +17,11 @@ Nothing derived from the manifest is ever removed recursively: single files and 
 """
 
 import hashlib
+import json
 import os
 import shutil
 import stat
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -238,6 +240,25 @@ def swap_one(cfg: Config, e: Entry, *, apply: bool) -> SwapResult:
     return r
 
 
+def _post_swap(cfg: Config, paths: list[str]) -> str | None:
+    """Run the optional post-swap command once. Returns a short problem text, or None when it ran fine or is unset."""
+    if not cfg.post_swap_command:
+        return None
+    env = {**os.environ, "LOMBO_SHRINK_SWAPPED_JSON": json.dumps(paths)}
+    try:
+        done = subprocess.run(  # noqa: S603 - no shell; the command is the owner's own setting
+            list(cfg.post_swap_command),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as err:
+        return f"post-swap command failed ({type(err).__name__})"
+    return None if done.returncode == 0 else f"post-swap command failed (exit {done.returncode})"
+
+
 def run_swap(
     cfg: Config,
     entries: list[Entry],
@@ -261,4 +282,10 @@ def run_swap(
                     r.note = (
                         f"{r.note}; library refresh failed ({err})" if r.note else f"library refresh failed ({err})"
                     )
+    swapped = [r for r in results if r.status == "swapped"]
+    if apply and swapped:
+        problem = _post_swap(cfg, [r.path for r in swapped])
+        if problem:
+            for r in swapped:
+                r.note = f"{r.note}; {problem}" if r.note else problem
     return results
