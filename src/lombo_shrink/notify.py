@@ -15,7 +15,7 @@ def send(url: str, message: str, timeout: float = 10) -> None:
     body = json.dumps({"content": message, "text": message}).encode()
     # S310 is silenced here and below: config.py only accepts http(s) URLs.
     req = urllib.request.Request(  # noqa: S310
-        url, data=body, method="POST", headers={"Content-Type": "application/json"}
+        url, data=body, method="POST", headers={"Content-Type": "application/json", "User-Agent": "lombo-shrink"}
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout):  # noqa: S310
