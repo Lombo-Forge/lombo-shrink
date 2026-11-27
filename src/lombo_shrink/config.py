@@ -54,6 +54,8 @@ class Config:
     jellyfin_url: str | None
     jellyfin_api_key: str | None
     webhook_url: str | None
+    skip_file: str = ""  # a text file of library paths or folders to leave out of the list
+    branch_margin_gb: tuple[tuple[str, float], ...] = ()  # (library folder, GB it keeps free) instead of margin_gb
 
 
 def _truthy(value: str, name: str) -> bool:
@@ -116,6 +118,22 @@ def from_env(env: dict[str, str]) -> Config:
         raise ConfigError(f"{PREFIX}JELLYFIN_API_KEY is not set. Create one in Jellyfin: Dashboard > API Keys.")
 
     stage = get("STAGE_DIR", str(Path.home() / "lombo-shrink-staging"))
+    branches = tuple(p for p in get("BRANCHES").split(":") if p)
+    margins: dict[str, float] = {}
+    for part in filter(None, (p.strip() for p in get("BRANCH_MARGIN_GB").split(","))):
+        folder, sep, amount = part.rpartition("=")
+        folder = folder.strip().rstrip("/")
+        known = [b.rstrip("/") for b in branches or (get("LIBRARY_DIR"),)]
+        try:
+            gb = float(amount)
+        except ValueError:
+            gb = -1.0
+        if not sep or folder not in known or not 0 <= gb <= 100000:
+            raise ConfigError(
+                f"{PREFIX}BRANCH_MARGIN_GB must be entries like /mnt/boot-ssd/library=250, each folder one of "
+                f"{PREFIX}BRANCHES (got {part!r})"
+            )
+        margins[folder] = gb
     return Config(
         dry_run=_truthy(get("DRY_RUN", "true") or "true", "DRY_RUN"),
         library_dir=get("LIBRARY_DIR"),
@@ -135,7 +153,9 @@ def from_env(env: dict[str, str]) -> Config:
         extra_args=tuple(shlex.split(get("EXTRA_ENCODER_ARGS"))),
         skip_hardlinked=_truthy(get("SKIP_HARDLINKED", "true"), "SKIP_HARDLINKED"),
         stage_dir=stage,
-        branches=tuple(p for p in get("BRANCHES").split(":") if p),
+        branches=branches,
+        skip_file=get("SKIP_FILE"),
+        branch_margin_gb=tuple(margins.items()),
         keep_originals=_truthy(get("KEEP_ORIGINALS", "false"), "KEEP_ORIGINALS"),
         margin_gb=number("MARGIN_GB", "20", kind=float, minimum=0, maximum=100000),
         require_session=_truthy(get("REQUIRE_SESSION", "true") or "true", "REQUIRE_SESSION"),

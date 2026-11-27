@@ -14,18 +14,34 @@ from .config import Config
 SKIP_DIRS = {"convert-holding", "lombo-shrink-holding"}
 
 
+def skipped_paths(path: str) -> tuple[str, ...]:
+    """The skip file: one library path or folder per line, blank lines and # comments ignored. A file that is set
+    but cannot be read stops the scan: converting what was meant to be left out is the wrong guess."""
+    if not path:
+        return ()
+    with open(path, encoding="utf-8-sig") as f:
+        lines = (line.strip().replace("\\", "/").strip("/") for line in f)
+        return tuple(line for line in lines if line and not line.startswith("#"))
+
+
+def listed(rel: str, entries: tuple[str, ...]) -> bool:
+    """Is this file one of the entries, or inside one of those folders?"""
+    return any(rel == e or rel.startswith(e + "/") for e in entries)
+
+
 def scan(cfg: Config, progress: Callable[[str], None] | None = None, *, verbose: bool = False) -> list[dict[str, Any]]:
     """Walk the library, probe each video and keep the ones `core.skip_reason` lets through."""
     root = Path(cfg.library_dir)
     found: list[dict[str, Any]] = []
     left_out = 0
+    skip = skipped_paths(cfg.skip_file)
     for dirpath, dirnames, files in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in SKIP_DIRS)
         for name in sorted(files):
             path = Path(dirpath) / name
             if not name.lower().endswith(core.VIDEO_EXTENSIONS) or "sample" in name.lower() or name.startswith("."):
                 continue
-            if path.is_symlink():
+            if path.is_symlink() or listed(path.relative_to(root).as_posix(), skip):
                 continue
             st = path.stat()
             if cfg.skip_hardlinked and st.st_nlink >= 2:

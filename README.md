@@ -100,8 +100,9 @@ Written plainly, as of the first build:
   Ctrl+C bug fixed in 0.1.1. Playback in a media player was not checked. **AMD (`amf`), Intel (`qsv`) and macOS
   (`videotoolbox`) are best-effort mappings, never run on that hardware.** `doctor` tells you at once if an
   encoder does not work.
-- **The swap was tested only in temporary folders**, against fake `ffprobe`, `ssh` and `scp` stand-ins, not
-  against a real mergerfs pool, a real server over ssh, or a real Jellyfin.
+- **The swap has run end to end with a real ffmpeg and ffprobe** (`test/real/run.py`, the x265 processor encoder,
+  throwaway files), with local stand-ins for `ssh` and `scp`. Not against a real mergerfs pool, a real server over
+  ssh, or a real Jellyfin.
 - **Native Windows 11 was tried with NVIDIA** (v0.1.1, an RTX 3080, a portable ffmpeg 9.1 build, Python 3.13): `doctor`, `candidates`,
   `plan`, one real conversion into a folder with spaces and an accented letter in its name, the STOP file, Ctrl+C (exit 130, no
   leftover file) and the resume all passed. **Not verified on Windows:** keeping the PC awake (the test machine was held awake by
