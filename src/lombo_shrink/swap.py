@@ -150,7 +150,8 @@ def swap_one(cfg: Config, e: Entry, *, apply: bool) -> SwapResult:
     else:
         note("no ffprobe on this host: codec not re-checked (the PC verified decode)")
 
-    if not core.room_ok(shutil.disk_usage(final.parent).free, e.out_bytes, int(cfg.margin_gb * 1024**3)):
+    margin = max(cfg.margin_gb, dict(cfg.branch_margin_gb).get(str(branch).rstrip("/"), 0))
+    if not core.room_ok(shutil.disk_usage(final.parent).free, e.out_bytes, int(margin * 1024**3)):
         return fail("not enough free space on the disk holding the original")
 
     linked = ost.st_nlink >= 2
