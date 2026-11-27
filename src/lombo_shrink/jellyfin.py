@@ -47,7 +47,8 @@ class Jellyfin:
     def refresh_items(self, paths: list[str]) -> None:
         """Ask Jellyfin to read these files again. A swap keeps the original's modified time, so a library scan
         sees "unchanged" and would go on showing the old codec and size."""
-        query = "/Items?Recursive=true&Fields=Path&IncludeItemTypes=Movie,Episode,Video,MusicVideo"
+        # CollapseBoxSetItems=false: without it a title that is in a collection is not listed at all
+        query = "/Items?Recursive=true&CollapseBoxSetItems=false&Fields=Path&IncludeItemTypes=Movie,Episode,Video"
         wanted = tuple("/" + p for p in paths)  # Jellyfin's own prefix differs, so match the end of its path
         for item in self._get(query)["Items"]:
             if str(item.get("Path") or "").replace("\\", "/").endswith(wanted):

@@ -83,6 +83,7 @@ def test_refresh_items_rereads_only_the_swapped_files(fake):
         "/Items/a/Refresh?metadataRefreshMode=FullRefresh",
         "/Items/c/Refresh?metadataRefreshMode=FullRefresh",
     ]
+    assert "CollapseBoxSetItems=false" in fake.requests[0]["path"]
 
 
 def test_notify_posts_json(fake):

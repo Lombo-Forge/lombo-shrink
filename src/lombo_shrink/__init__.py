@@ -1,3 +1,3 @@
 """LomboShrink: a Lombo-Forge app for Jellyfin."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
