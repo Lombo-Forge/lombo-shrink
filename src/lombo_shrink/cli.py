@@ -5,7 +5,8 @@ lombo-shrink candidates [--out F]   list the files worth converting, biggest fir
 lombo-shrink plan [--list F]        show what `run` would convert; changes nothing, ever
 lombo-shrink run [--list F]         convert (needs DRY_RUN=false), optionally shipping each file to the server
 lombo-shrink review                 list converted files still waiting on this PC; only reads
-lombo-shrink swap --manifest M --result R [--apply]   server side: swap converted files in (dry run without --apply)
+lombo-shrink swap --manifest M --result R [--apply] [--keep-originals]
+                                    server side: swap converted files in (dry run without --apply)
 lombo-shrink session open|close|status [HOURS]        server side: the lock that allows `swap --apply`
 """
 
@@ -273,6 +274,7 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     sw.add_argument("--manifest", required=True)
     sw.add_argument("--result", required=True)
     sw.add_argument("--apply", action="store_true")
+    sw.add_argument("--keep-originals", action="store_true", help="same as KEEP_ORIGINALS=true for this run")
     ses = sub.add_parser("session")
     ses.add_argument("action", choices=["open", "close", "status"])
     ses.add_argument("hours", nargs="?", type=int, default=8)
@@ -296,6 +298,8 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
         if args.cmd == "review":
             return _review(cfg)
         if args.cmd == "swap":
+            if args.keep_originals:
+                cfg = replace(cfg, keep_originals=True)
             return _swap(cfg, args.manifest, args.result, apply=args.apply)
         return _session(cfg, args.action, args.hours)
     except (OSError, ValueError) as e:

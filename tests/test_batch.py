@@ -299,6 +299,17 @@ def test_ship_swaps_the_file_in_and_cleans_up_the_pc(pair):
     assert "Shipped to the server: 1" in report
 
 
+def test_ship_with_keep_originals_on_the_pc_keeps_them_on_the_server(pair):
+    lab, stage, _extra, penv = pair
+    from lombo_shrink import session
+
+    session.open_session(stage / "session.json", 1)
+    assert main(["run"], {**penv, "LOMBO_SHRINK_KEEP_ORIGINALS": "true"}) == 0
+    assert lab.path.read_bytes() == b"\0" * 400
+    held = lab.tmp / "lib" / ".lombo-shrink-holding" / "m" / "Foo (2019).mkv"
+    assert held.read_bytes() == b"s" * SRC_BYTES
+
+
 def test_ship_without_a_session_keeps_the_file_on_the_pc(pair):
     lab, _stage, _extra, penv = pair
     assert main(["run"], penv) == 0
