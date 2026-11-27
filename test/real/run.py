@@ -8,7 +8,7 @@ is used. Run from the repository:
     docker run --rm -v "$PWD/test/real:/t:ro" --entrypoint python lf-shrink:test /t/run.py
 """
 
-# ruff: noqa: S603, S108
+# ruff: noqa: S103, S108, S603  (throwaway scripts and files inside a test container)
 
 import hashlib
 import json
