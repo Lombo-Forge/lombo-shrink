@@ -109,7 +109,8 @@ Written plainly, as of the first build:
   something else, so the result proves nothing), a mapped network drive or a UNC path, and playback in a player.
 - A source `.mp4` whose audio has no language tag was refused by the language check (the mkv reads back its default, `eng`). Fixed
   after that run; checked with unit tests only, not re-run on Windows.
-- The per-file quality probe (VMAF) of the original scripts is **not included**: a fixed CQ is used.
+- **The per-file quality probe (`QUALITY_PROBE=true`) has not run with a real libvmaf.** It is a port of a script that
+  has, and its decisions are tested with made-up scores. If it fails, the fixed CQ is used.
 - There is no standalone ship command. Files converted earlier and still on the PC are shipped by the next
   `run` (that file must still be in the candidate list); that retry was tested only with stand-ins.
 - A library file that changes in the instant between the last re-check and the rename is not caught.

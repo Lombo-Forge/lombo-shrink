@@ -54,6 +54,8 @@ class Config:
     jellyfin_url: str | None
     jellyfin_api_key: str | None
     webhook_url: str | None
+    quality_probe: bool = False  # pick CQ per file with VMAF
+    vmaf_ffmpeg: str = ""  # an ffmpeg with libvmaf; empty means ffmpeg
     skip_file: str = ""  # a text file of library paths or folders to leave out of the list
     branch_margin_gb: tuple[tuple[str, float], ...] = ()  # (library folder, GB it keeps free) instead of margin_gb
 
@@ -155,6 +157,8 @@ def from_env(env: dict[str, str]) -> Config:
         stage_dir=stage,
         branches=branches,
         skip_file=get("SKIP_FILE"),
+        quality_probe=_truthy(get("QUALITY_PROBE", "false"), "QUALITY_PROBE"),
+        vmaf_ffmpeg=get("VMAF_FFMPEG"),
         branch_margin_gb=tuple(margins.items()),
         keep_originals=_truthy(get("KEEP_ORIGINALS", "false"), "KEEP_ORIGINALS"),
         margin_gb=number("MARGIN_GB", "20", kind=float, minimum=0, maximum=100000),
