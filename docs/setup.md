@@ -38,7 +38,8 @@ Run it from a normal terminal; map the library to a drive letter and use it as `
    if you can: with it the server re-checks that the staged video is H.265 before swapping.
 2. Set, in the environment the ssh command will see: `LOMBO_SHRINK_LIBRARY_DIR` (or `BRANCHES` with mergerfs),
    `LOMBO_SHRINK_STAGE_DIR`, and `LOMBO_SHRINK_DRY_RUN=false` (the swap refuses to apply otherwise). Optionally
-   `LOMBO_SHRINK_JELLYFIN_URL` and key, so Jellyfin is asked to rescan after a swap.
+   `LOMBO_SHRINK_JELLYFIN_URL` and key, so Jellyfin is asked to rescan and to read each swapped
+   file again after a swap.
 3. Make the account that runs it able to write the library folders (same owner as the media files). The image
    does not run as root: it defaults to user `1000:1000`, and `compose.example.yaml` sets `user:` to the owner of
    your media files. With plain `docker run`, pass `--user <uid>:<gid>` of that owner. Root is not needed: when the

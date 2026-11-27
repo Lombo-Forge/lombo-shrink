@@ -216,7 +216,12 @@ def _swap(cfg: Config, manifest: str, result: str, *, apply: bool) -> int:
         print("warning: no conversion session is open (--apply would refuse)", file=sys.stderr)
     refresh = None
     if cfg.jellyfin_url and cfg.jellyfin_api_key:
-        refresh = Jellyfin(cfg.jellyfin_url, cfg.jellyfin_api_key).refresh_library
+        jf = Jellyfin(cfg.jellyfin_url, cfg.jellyfin_api_key, timeout=60)
+
+        def refresh(paths: list[str]) -> None:
+            jf.refresh_library()
+            jf.refresh_items(paths)
+
     results = swap.run_swap(cfg, entries, apply=apply, session_open=is_open, refresh=refresh)
     for r in results:
         print(f"{r.status:<8} {r.path}{'  -- ' + r.reason if r.reason else ''}{'  (' + r.note + ')' if r.note else ''}")

@@ -285,16 +285,16 @@ def test_codec_is_rechecked_when_ffprobe_exists(tmp_path):
 def test_run_swap_needs_a_session_and_refreshes_jellyfin(s):
     entries = [s.entry()]
     refreshed = []
-    r = swap.run_swap(s.cfg(), entries, apply=True, session_open=False, refresh=lambda: refreshed.append(1))
+    r = swap.run_swap(s.cfg(), entries, apply=True, session_open=False, refresh=refreshed.extend)
     assert "no open conversion session" in r[0].reason
     assert s.orig.read_bytes() == SRC
-    r = swap.run_swap(s.cfg(), entries, apply=True, session_open=True, refresh=lambda: refreshed.append(1))
+    r = swap.run_swap(s.cfg(), entries, apply=True, session_open=True, refresh=refreshed.extend)
     assert r[0].status == "swapped"
-    assert refreshed == [1]
+    assert refreshed == ["m/Foo.mkv"]
 
 
 def test_a_failing_refresh_is_a_note_not_a_failed_swap(s):
-    def boom() -> None:
+    def boom(paths: list[str]) -> None:
         raise RuntimeError("down")
 
     r = swap.run_swap(s.cfg(), [s.entry()], apply=True, session_open=True, refresh=boom)

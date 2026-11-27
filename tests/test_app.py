@@ -71,6 +71,20 @@ def test_client_sends_the_key_and_reports_failures(fake):
         Jellyfin("http://127.0.0.1:1", "k", timeout=1).public_info()
 
 
+def test_refresh_items_rereads_only_the_swapped_files(fake):
+    fake.items = [
+        {"Id": "a", "Path": "/data/library/m/Foo.mkv"},
+        {"Id": "b", "Path": "/data/library/xm/Foo.mkv"},  # not "m/Foo.mkv" in a folder of that name
+        {"Id": "c", "Path": "D:\\media\\tv\\S\\e.mkv"},
+        {"Id": "d"},
+    ]
+    Jellyfin(fake.url, "good-key").refresh_items(["m/Foo.mkv", "tv/S/e.mkv"])
+    assert [p["path"] for p in fake.posts()] == [
+        "/Items/a/Refresh?metadataRefreshMode=FullRefresh",
+        "/Items/c/Refresh?metadataRefreshMode=FullRefresh",
+    ]
+
+
 def test_notify_posts_json(fake):
     notify.send(fake.url + "/hook", "hello")
     assert fake.posts()[0]["body"] == {"content": "hello", "text": "hello"}

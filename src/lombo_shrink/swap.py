@@ -266,7 +266,7 @@ def run_swap(
     *,
     apply: bool,
     session_open: bool,
-    refresh: Callable[[], None] | None = None,
+    refresh: Callable[[list[str]], None] | None = None,
 ) -> list[SwapResult]:
     results: list[SwapResult] = []
     for e in entries:
@@ -274,9 +274,10 @@ def run_swap(
             results.append(SwapResult(e.path, "failed", "no open conversion session (run `lombo-shrink session open`)"))
         else:
             results.append(swap_one(cfg, e, apply=apply))
-    if apply and refresh and any(r.status == "swapped" for r in results):
+    changed = [r.path for r in results if r.status == "swapped"]
+    if apply and refresh and changed:
         try:
-            refresh()
+            refresh(changed)
         except Exception as err:  # noqa: BLE001 - best effort: a refresh problem never fails a swap
             for r in results:
                 if r.status == "swapped":

@@ -44,10 +44,22 @@ class Jellyfin:
     def libraries(self) -> list[dict[str, Any]]:
         return cast(list[dict[str, Any]], self._get("/Library/VirtualFolders"))
 
+    def refresh_items(self, paths: list[str]) -> None:
+        """Ask Jellyfin to read these files again. A swap keeps the original's modified time, so a library scan
+        sees "unchanged" and would go on showing the old codec and size."""
+        query = "/Items?Recursive=true&Fields=Path&IncludeItemTypes=Movie,Episode,Video,MusicVideo"
+        wanted = tuple("/" + p for p in paths)  # Jellyfin's own prefix differs, so match the end of its path
+        for item in self._get(query)["Items"]:
+            if str(item.get("Path") or "").replace("\\", "/").endswith(wanted):
+                self._post(f"/Items/{item['Id']}/Refresh?metadataRefreshMode=FullRefresh")
+
     def refresh_library(self) -> None:
         """Ask Jellyfin to rescan, so swapped files are picked up."""
+        self._post("/Library/Refresh")
+
+    def _post(self, path: str) -> None:
         req = urllib.request.Request(  # noqa: S310
-            self.base + "/Library/Refresh",
+            self.base + path,
             data=b"",
             method="POST",
             headers={"Authorization": f'MediaBrowser Token="{self.key}"'},
@@ -56,4 +68,4 @@ class Jellyfin:
             with urllib.request.urlopen(req, timeout=self.timeout):  # noqa: S310
                 pass
         except (urllib.error.URLError, OSError) as e:
-            raise JellyfinError(f"/Library/Refresh: {e}") from e
+            raise JellyfinError(f"{path}: {e}") from e
