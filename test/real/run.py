@@ -129,6 +129,8 @@ def untouched() -> bool:
     return all(os.path.isfile(f"{DISK1}/{r}") and digest(f"{DISK1}/{r}") == h for r, h in before.items())
 
 
+code, out = shrink("doctor", LOMBO_SHRINK_QUALITY_PROBE="true")
+check("doctor says this ffmpeg has no libvmaf", "has no libvmaf" in out, out)
 code, out = shrink("candidates", "--out", f"{WORK}/list.json")
 with open(f"{WORK}/list.json", encoding="utf-8") as f:
     found = json.load(f)
@@ -144,7 +146,7 @@ check("the converted files wait on the PC", len(waiting) == 2, out)
 
 code, out = sh("sh", "-c", f". {WORK}/server.env; lombo-shrink session open 1")
 check("session open", code == 0, out)
-code, out = shrink("run")
+code, out = shrink("run", LOMBO_SHRINK_QUALITY_PROBE="true")  # no libvmaf here: falls back
 print("       " + out.strip().replace("\n", "\n       ")[-900:])
 new_film, new_clip = f"{DISK1}/{film}", f"{DISK1}/{clip[:-4]}.mkv"
 check("the next run ships the waiting files and swaps them", code == 0 and not untouched(), out)

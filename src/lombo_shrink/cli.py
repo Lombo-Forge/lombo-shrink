@@ -14,11 +14,12 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import __version__, batch, core, media, notify, scan, session, ship, swap
+from . import __version__, batch, core, media, notify, probe, scan, session, ship, swap
 from .config import Config, ConfigError, from_env
 from .jellyfin import Jellyfin, JellyfinError
 
@@ -83,6 +84,10 @@ def doctor(cfg: Config) -> int:
             line(True, "Jellyfin", f"{info.get('ServerName')} (key accepted)")
         except JellyfinError as e:
             line(False, "Jellyfin", str(e))
+    if cfg.quality_probe:
+        tool = cfg.vmaf_ffmpeg or cfg.ffmpeg
+        found = probe.has_vmaf(tool)
+        line(found, "quality probe", f"{tool} has libvmaf" if found else f"{tool} has no libvmaf (set VMAF_FFMPEG)")
     line(True, "webhook", "set" if cfg.webhook_url else "not set (alerts are skipped)")
     return 0 if ok else 1
 
@@ -127,6 +132,11 @@ def _batch(cfg: Config, list_file: str | None, *, dry: bool, redo: bool = False,
         print(f"[FAIL] {why}", file=sys.stderr)
         return 1
     items = _load_items(cfg, list_file, verbose)
+    if cfg.quality_probe and not dry and not probe.has_vmaf(cfg.vmaf_ffmpeg or cfg.ffmpeg):
+        print(
+            f"warning: no libvmaf in {cfg.vmaf_ffmpeg or cfg.ffmpeg}: using CQ {cfg.cq} for every file", file=sys.stderr
+        )
+        cfg = replace(cfg, quality_probe=False)
     if not dry and (err := media.encoder_error(cfg.ffmpeg, name, cfg.cq)):
         print(f"[FAIL] {core.ENCODER_CODECS[name]} does not work here: {err}", file=sys.stderr)
         return 1

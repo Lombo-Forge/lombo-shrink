@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from . import core, media
+from . import core, media, probe
 from .config import Config
 
 Ship = Callable[
@@ -65,6 +65,23 @@ def _read_log(path: Path) -> list[dict[str, Any]]:
             except ValueError:
                 continue  # a half-written last line after a crash
     return records
+
+
+def _pick_cq(cfg: Config, src: Path, encoder: str, log: Callable[[str], None]) -> tuple[int, dict[str, float], str]:
+    """(CQ to use, scores to record, why not to convert). A file the encode would skip anyway is not probed."""
+    info = media.probe(cfg.ffprobe, str(src))
+    if info is None or core.skip_reason(info, src.stat().st_size, allow_hevc=cfg.allow_hevc, min_bpp=cfg.min_bpp):
+        return cfg.cq, {}, ""  # convert_file reports it
+    try:
+        choice = probe.probe_file(cfg, src, encoder, log)
+    except probe.ProbeError as e:
+        log(f"  quality probe failed ({e}); using CQ {cfg.cq}")
+        return cfg.cq, {}, ""
+    scores = {"vmaf_mean": round(choice.mean, 2), "vmaf_p5": round(choice.p5, 2)}
+    if choice.cq is None:
+        return cfg.cq, scores, choice.reason
+    log(f"  quality probe picked CQ {choice.cq}")
+    return choice.cq, scores, ""
 
 
 def run_batch(
@@ -170,7 +187,8 @@ def run_batch(
                     break
             if dry_run:
                 result.planned.append(
-                    f"would convert {it['path']} ({int(it.get('size', 0)) // 1024**2} MB) with {encoder} CQ {cfg.cq}"
+                    f"would convert {it['path']} ({int(it.get('size', 0)) // 1024**2} MB) with {encoder} "
+                    + ("CQ picked per file" if cfg.quality_probe else f"CQ {cfg.cq}")
                 )
                 tried += 1
                 continue
@@ -182,10 +200,17 @@ def run_batch(
             log(f"[{tried + 1}] {it.get('title', it['path'])}  ({int(it.get('size', 0)) // 1024**2} MB)")
             mtime = src.stat().st_mtime
             started = time.monotonic()
-            outcome = media.convert_file(cfg, src, out, encoder, cfg.cq, poll)
+            cq, scores, refused = _pick_cq(cfg, src, encoder, log) if cfg.quality_probe else (cfg.cq, {}, "")
             tried += 1
+            if refused:
+                record(it, "skipped", refused, None, {"src_mtime": mtime, **scores})
+                row(it, "skipped", refused)
+                log(f"  skipped: {refused}")
+                continue
+            outcome = media.convert_file(cfg, src, out, encoder, cq, poll)
             extra = {
-                "cq": cfg.cq,
+                **scores,
+                "cq": cq,
                 "encoder": encoder,
                 "encode_seconds": round(time.monotonic() - started, 1),
                 "src_mtime": mtime,
@@ -200,6 +225,7 @@ def run_batch(
                     src=it.get("size", 0),
                     out=size,
                     ship=ship_status if ship_status == "swapped" else f"{ship_status} {ship_msg}".strip(),
+                    cq=cq,
                 )
             else:
                 if outcome.status == "rejected":
