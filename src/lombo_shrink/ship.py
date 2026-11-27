@@ -17,6 +17,7 @@ from typing import Any
 from .config import Config
 
 OPTS = ["-o", "BatchMode=yes"]
+SWAP_TIMEOUT = 6 * 3600  # the server hashes and copies the whole file: a big film on a slow disk takes long
 
 
 class ShipError(Exception):
@@ -100,6 +101,7 @@ def ship_file(cfg: Config, item: dict[str, Any], out: Path, src_mtime: float, ou
             cfg,
             f"{cfg.remote_command} swap --apply --manifest {q(f'{stage}/manifests/{sid}.json')}"
             f" --result {q(result_path)}{keep}",
+            SWAP_TIMEOUT,
         )
         read = _ssh(cfg, f"cat {q(result_path)}", 60)
         try:
