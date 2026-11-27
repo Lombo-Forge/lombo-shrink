@@ -20,6 +20,7 @@ class Fake:
     def __init__(self):
         self.requests: list[dict] = []
         self.key = "good-key"
+        self.items: list[dict] = []
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -42,6 +43,8 @@ class Fake:
                     return self._reply(401)
                 if self.path == "/System/Info":
                     return self._reply(200, {"ServerName": "Fake"})
+                if self.path.startswith("/Items?"):
+                    return self._reply(200, {"Items": outer.items})
                 return self._reply(404)
 
             def do_POST(self):
